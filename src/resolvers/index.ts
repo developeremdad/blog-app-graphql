@@ -1,6 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
+import { generateToken } from "../utils/jwtHealper";
 
 const prisma = new PrismaClient();
 
@@ -8,6 +8,7 @@ interface IUserInto {
   name: string;
   email: string;
   password: string;
+  bio?: string;
 }
 
 export const resolvers = {
@@ -18,6 +19,19 @@ export const resolvers = {
   },
   Mutation: {
     signup: async (parent: any, args: IUserInto, context: any) => {
+      const user = await prisma.user.findFirst({
+        where: {
+          email: args.email,
+        },
+      });
+
+      if (user) {
+        return {
+          userError: "User already exists",
+          token: null,
+        };
+      }
+
       // Hashed user password
       const hashPassword = await bcrypt.hash(args.password, 12);
 
@@ -30,10 +44,17 @@ export const resolvers = {
         },
       });
 
+      if (args?.bio) {
+        await prisma.profile.create({
+          data: {
+            userId: newUser.id,
+            bio: args.bio,
+          },
+        });
+      }
+
       //   Generate a token and return it
-      const token = jwt.sign({ id: newUser.id }, "signature", {
-        expiresIn: "1d",
-      });
+      const token = generateToken({ id: newUser.id });
       return {
         userError: null,
         token,
@@ -54,9 +75,7 @@ export const resolvers = {
         return { userError: "Incorrect password!", token: null };
       }
 
-      const token = jwt.sign({ id: user.id }, "signature", {
-        expiresIn: "1d",
-      });
+      const token = generateToken({ id: user.id });
       return {
         userError: null,
         token,
